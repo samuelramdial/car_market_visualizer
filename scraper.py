@@ -3,14 +3,13 @@ from bs4 import BeautifulSoup
 import json
 import pandas as pd
 
-url = 'https://raleigh.craigslist.org/search/cta'  # Raleigh cars & trucks area
+URL = "https://raleigh.craigslist.org/search/cta?purveyor=owner"
+HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-}
+res = requests.get(URL, headers=HEADERS)
+res.raise_for_status()  # ensure we get a valid response
 
-response = requests.get(url, headers=headers)
-soup = BeautifulSoup(response.text, 'html.parser')
+soup = BeautifulSoup(res.text, 'html.parser')
 
 script_tag = soup.find('script', {'type': 'application/ld+json', 'id': 'ld_searchpage_results'})
 
@@ -21,15 +20,28 @@ if script_tag:
     cars = []
     for listing in listings:
         item = listing.get("item", {})
+        offers = item.get("offers", {})
+        address = offers.get("availableAtOrFrom", {}).get("address", {})
+        geo = offers.get("availableAtOrFrom", {}).get("geo", {})
+
+        name = item.get("name")
+        price = offers.get("price")
+        latitude = geo.get("latitude")
+        longitude = geo.get("longitude")
+        location = address.get("addressLocality")
+
         car = {
-            "name": item.get("name"),
-            "price": item.get("offers", {}).get("price"),
-            "location": item.get("offers", {}).get("availableAtOrFrom", {}).get("address", {}).get("addressLocality"),
-            "images": item.get("image", []),
+            "name": name,
+            "price": float(price) if price else None,
+            "location": location,
+            "make": name.split()[1] if name and len(name.split()) > 1 else None,
+            "latitude": latitude,
+            "longitude": longitude,
         }
         cars.append(car)
 
     df = pd.DataFrame(cars)
     print(df.head())
+    df.to_csv("car_listings.csv", index=False)
 else:
     print("Could not find JSON script tag.")
